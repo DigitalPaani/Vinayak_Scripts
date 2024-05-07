@@ -137,7 +137,7 @@ while True:
                 print("60 minutes have passed")
                 # Prepare the data dictionary
             elif minutes_passed >= 89 and minutes_passed <= 91:
-                print("900 minutes have passed")
+                print("90 minutes have passed")
                 # Prepare the data dictionary
 
                 # Preparing the data dictionary
