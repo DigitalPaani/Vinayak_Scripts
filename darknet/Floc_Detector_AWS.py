@@ -11,7 +11,7 @@ from datetime import datetime
 import pytz
 
 # RTSP stream URL
-rtsp_url = "rtsp://admin:QKEHUX@192.168.1.25:554/ch1/main"
+rtsp_url = "rtsp://admin:AZTTNA@192.168.1.15:554/ch1/main"
 
 # Set constant values for plantId and plcId
 plant_id = ""
@@ -26,7 +26,7 @@ def get_current_timestamp():
 
 # Function to capture an image from the RTSP stream
 def take_photo():
-    images_dir = "/home/pi/results"
+    images_dir = "/Users/nalinluthra/Code/results"
     os.makedirs(images_dir, exist_ok=True)
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     output_file = os.path.join(images_dir, f'{timestamp}.jpg')
@@ -44,7 +44,7 @@ def take_photo():
 
 # Function to run Darknet and return bounding box coordinates
 def run_darknet(image_path):
-    result = subprocess.run(["./darknet", "detector", "test", "data/obj.data", "cfg/yolov4-obj.cfg", "yolov4-obj_final.weights", "-dont_show", "-ext_output", image_path], stdout=subprocess.PIPE, text=True)
+    result = subprocess.run(["./darknet.py", "detector", "test", "data/obj.data", "cfg/yolov4-obj.cfg", "yolov4-obj_final.weights", "-dont_show", "-ext_output", image_path], stdout=subprocess.PIPE, text=True)
     output = result.stdout
 
     beaker_match = re.findall(r"Beaker: \d+%.*left_x: *(\d+) *top_y: *(\d+) *width: *(\d+) *height: *(\d+)", output)
@@ -61,12 +61,12 @@ def calculate_sludge_percentage(beaker_bbox, sludge_bbox):
 
 # AWS IoT configurations
 host = "a1uci4yrmbdj5m-ats.iot.ap-south-1.amazonaws.com"
-root_ca_path = "/home/pi/certificates/AmazonRootCA1.pem"
-certificate_path = "/home/pi/certificates/certificate.pem.crt"
-private_key_path = "/home/pi/certificates/private.pem.key"
+root_ca_path = "/Users/nalinluthra/Code/Certificates/AmazonRootCA1.pem"
+certificate_path = "/Users/nalinluthra/Code/Certificates/817f7a52521008a5ee35675333a01e7dafc01c8f742db2121161cd9c264b37b4-certificate.pem.crt"
+private_key_path = "/Users/nalinluthra/Code/Certificates/817f7a52521008a5ee35675333a01e7dafc01c8f742db2121161cd9c264b37b4-private.pem.key"
 port = 8883
-client_id = "WorldSpa_SV30_1"
-topic = "worldspa/pub"
+client_id = "NALIN_PLC_1"
+topic = "nalin/pub"
 
 # Initialize and configure AWS IoT MQTT Client
 my_aws_iot_mqtt_client = AWSIoTMQTTClient(client_id)
@@ -81,29 +81,82 @@ my_aws_iot_mqtt_client.configureMQTTOperationTimeout(5)
 # Connect to AWS IoT
 my_aws_iot_mqtt_client.connect()
 
+array_of_data = []
+
+# Set the limit of array to 10
+limit = 10
+
+# Set starting time
+start_time = time.time()
+
 # Main loop
 while True:
     photo_path = take_photo()
     if photo_path:
         beaker_bbox, sludge_bbox = run_darknet(photo_path)
-        if beaker_bbox and sludge_bbox:
-            beaker_bbox = [int(x) for x in beaker_bbox[0]]
-            sludge_bbox = [int(x) for x in sludge_bbox[0]]
-
+        beaker_bbox = [int(x) for x in beaker_bbox[0]]
+        sludge_bbox = [int(x) for x in sludge_bbox[0]]
+        if not beaker_bbox or not sludge_bbox:
+            sludge_level_percentage = 0
+        else:
             sludge_level_percentage = calculate_sludge_percentage(beaker_bbox, sludge_bbox)
-            timestamp = datetime.now().isoformat()
+            print(f"Detection failed for image {photo_path}")
+
+        timestamp = datetime.now().isoformat()
+
+        array_of_data.append({
+            "beaker_bbox": beaker_bbox,
+            "sludge_bbox": sludge_bbox,
+            "sludge_level_percentage": sludge_level_percentage,
+            "timestamp": timestamp
+        })
+        if len(array_of_data) == limit:
+            number_of_times_beaker_detected = sum([1 for data in array_of_data if data["beaker_bbox"]])
+
+            # Reset the start time
+            if number_of_times_beaker_detected == 0:
+                print("Beaker not detected in any of the images")
+                start_time = time.time()
+                continue
+            
+            average_sludge_level_percentage = sum([data["sludge_level_percentage"] for data in array_of_data]) / number_of_times_beaker_detected
 
             # Assuming sludge_level_percentage is calculated in your script
             sludge_level_percentage = round(sludge_level_percentage, 2)  # rounding to two decimal places
-            
-            # Annotate image
-            image = cv2.imread(photo_path)
-            #cv2.rectangle(image, (beaker_bbox[0], beaker_bbox[1]), (beaker_bbox[0] + beaker_bbox[2], beaker_bbox[1] + beaker_bbox[3]), (0, 255, 0), 2)
-            #cv2.rectangle(image, (sludge_bbox[0], sludge_bbox[1]), (sludge_bbox[0] + sludge_bbox[2], sludge_bbox[1] + sludge_bbox[3]), (255, 0, 0), 2)
-            cv2.putText(image, f"Sludge Level: {sludge_level_percentage:.2f}%", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-            # Save annotated image
-            cv2.imwrite(photo_path, image)
+            # Remove first element from the array
+            array_of_data.pop(0)
+
+            # 30 Mins have passed from starting time
+            minutes_passed = (time.time() - start_time) / 60
+            
+            if minutes_passed >= 29 and minutes_passed <= 31:
+                print("30 minutes have passed")
+                # Prepare the data dictionary
+            elif minutes_passed >= 59 and minutes_passed <= 61:
+                print("60 minutes have passed")
+                # Prepare the data dictionary
+            elif minutes_passed >= 89 and minutes_passed <= 91:
+                print("900 minutes have passed")
+                # Prepare the data dictionary
+
+                # Preparing the data dictionary
+                data = {
+                    "plantId": plant_id,
+                    "plcId": plc_id,
+                    "TIMESTAMP": get_current_timestamp(),
+                    "SV30_ATdd1_1": str(average_sludge_level_percentage)  # Converting float to string
+                }
+
+                # Convert the dictionary to JSON
+                json_data = json.dumps(data, indent=4)
+                print(json_data)
+
+                my_aws_iot_mqtt_client.publish(topic, json_data, 1)
+                print(f"Data published to AWS IoT: {json_data}")
+
+                # Reset the start time
+                
 
             # Preparing the data dictionary
             data = {
@@ -119,9 +172,7 @@ while True:
 
             my_aws_iot_mqtt_client.publish(topic, json_data, 1)
             print(f"Data published to AWS IoT: {json_data}")
-        else:
-            print(f"Detection failed for image {photo_path}")
-
-    time.sleep(40)#Wait for 1 seconds
+    else:
+        print("Failed to capture image")
 
 my_aws_iot_m
