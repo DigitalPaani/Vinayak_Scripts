@@ -94,8 +94,18 @@ while True:
     photo_path = take_photo()
     if photo_path:
         beaker_bbox, sludge_bbox = run_darknet(photo_path)
-        beaker_bbox = [int(x) for x in beaker_bbox[0]]
-        sludge_bbox = [int(x) for x in sludge_bbox[0]]
+        if beaker_bbox:
+            beaker_bbox = [int(x) for x in beaker_bbox[0]]
+        else:
+            beaker_bbox = None
+            print(f"Beaker not detected in image {photo_path}")
+        if sludge_bbox:
+            sludge_bbox = [int(x) for x in sludge_bbox[0]]
+        else:
+            sludge_bbox = None
+            print(f"Sludge not detected in image {photo_path}")
+
+
         if not beaker_bbox or not sludge_bbox:
             sludge_level_percentage = 0
         else:
@@ -140,23 +150,12 @@ while True:
                 print("90 minutes have passed")
                 # Prepare the data dictionary
 
-                # Preparing the data dictionary
-                data = {
-                    "plantId": plant_id,
-                    "plcId": plc_id,
-                    "TIMESTAMP": get_current_timestamp(),
-                    "SV30_ATdd1_1": str(average_sludge_level_percentage)  # Converting float to string
-                }
-
                 # Convert the dictionary to JSON
                 json_data = json.dumps(data, indent=4)
                 print(json_data)
 
                 my_aws_iot_mqtt_client.publish(topic, json_data, 1)
-                print(f"Data published to AWS IoT: {json_data}")
-
-                # Reset the start time
-                
+                print(f"Data published to AWS IoT: {json_data}")                
 
             # Preparing the data dictionary
             data = {
